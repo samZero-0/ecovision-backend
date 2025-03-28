@@ -13,6 +13,7 @@ const port = process.env.PORT || 5000;
 
 
 
+
 app.use(cors(
     {
         origin: [
@@ -26,6 +27,7 @@ app.use(cors(
         credentials: true,
     }
 ));
+
 // app.use(cookieParser());
 app.use(express.json());
 
@@ -72,10 +74,10 @@ const client = new MongoClient(uri, {
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
+        // await client.connect();
         // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        // await client.db("admin").command({ ping: 1 });
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
       
 
@@ -142,25 +144,61 @@ async function run() {
 
 
      
-
         app.post('/users', async (req, res) => {
-                    const newUser = req.body;
-                  
-                    try {
-                      
-                      const existingUser = await userCollection.findOne({ email: newUser.email });
-                  
-                      if (existingUser) {
-                        res.status(200).send({ message: "User already exists", user: existingUser });
-                      } else {
-                        
-                        const result = await userCollection.insertOne(newUser);
-                        res.status(201).send({ message: "User created successfully", user: result.ops[0] });
-                      }
-                    } catch (error) {
-                      res.status(500).send({ message: "Internal server error", error: error.message });
-                    }
-                  });
+            const newUser = req.body;
+          
+            try {
+              // Validate required fields
+              if (!newUser.email) {
+                return res.status(400).send({ 
+                  message: "Email is required",
+                  success: false
+                });
+              }
+              
+              // Normalize user data
+              const userToInsert = {
+                displayName: newUser.name || newUser.displayName || '',
+                email: newUser.email,
+                photoURL: newUser.photo || newUser.photoURL || '',
+                role: newUser.role || 'user',
+                createdAt: new Date()
+              };
+            
+              const existingUser = await userCollection.findOne({ email: userToInsert.email });
+          
+              if (existingUser) {
+                return res.status(200).send({ 
+                  message: "User already exists", 
+                  user: existingUser,
+                  success: true 
+                });
+              } else {
+                const result = await userCollection.insertOne(userToInsert);
+                
+                return res.status(201).send({ 
+                  message: "User created successfully", 
+                  user: {
+                    ...userToInsert,
+                    _id: result.insertedId
+                  },
+                  success: true
+                });
+              }
+            } catch (error) {
+              console.error('User creation error:', {
+                message: error.message,
+                stack: error.stack,
+                body: req.body
+              });
+        
+              res.status(500).send({ 
+                message: "Internal server error", 
+                error: error.message,
+                success: false 
+              });
+            }
+        });
 
 
         app.get('/users', async (req, res) => {
