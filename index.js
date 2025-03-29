@@ -67,9 +67,8 @@ const client = new MongoClient(uri, {
 
         const database = client.db('Ecovision');
         const userCollection = database.collection('users');
-      
-        // const ordersCollection = database.collection('orders');
-
+        const eventCollection = database.collection('events');
+       
 
 async function run() {
     try {
@@ -313,7 +312,172 @@ async function run() {
               }
             });
 
-         
+
+
+            // Event Management APIs
+            // Add this inside your 'run' function with your other routes
+            app.post('/events', async (req, res) => {
+              const { title, date, time, location, attendees, status } = req.body;
+              
+              try {
+                // Validate required fields
+                if (!title || !date) {
+                  return res.status(400).json({ 
+                    message: "Title and date are required fields",
+                    success: false
+                  });
+                }
+                
+                // Create event object with all fields
+                const newEvent = {
+                  title,
+                  date,
+                  time: time || '',
+                  location: location || '',
+                  attendees: attendees || 0,
+                  status: status || 'Upcoming',
+                  createdAt: new Date()
+                };
+                
+                // Insert the event into the database
+                const result = await eventCollection.insertOne(newEvent);
+                
+                if (result.insertedId) {
+                  return res.status(201).json({ 
+                    message: "Event created successfully", 
+                    event: {
+                      ...newEvent,
+                      _id: result.insertedId
+                    },
+                    success: true
+                  });
+                } else {
+                  return res.status(500).json({ 
+                    message: "Failed to create event", 
+                    success: false
+                  });
+                }
+              } catch (error) {
+                console.error('Event creation error:', {
+                  message: error.message,
+                  stack: error.stack,
+                  body: req.body
+                });
+                
+                res.status(500).json({ 
+                  message: "Internal server error", 
+                  error: error.message,
+                  success: false 
+                });
+              }
+            });
+
+
+            app.get('/events', async (req, res) => {
+
+              const result = await eventCollection.find().toArray();
+              res.send(result);
+          });
+          
+          app.delete('/events/:id', async (req, res) => {
+            const { id } = req.params;
+            
+            try {
+              // Check if ID is valid
+              if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ 
+                  message: 'Invalid user ID format', 
+                  success: false 
+                });
+              }
+
+              const result = await eventCollection.deleteOne({ _id: new ObjectId(id) });
+              
+              if (result.deletedCount === 0) {
+                return res.status(404).json({ 
+                  message: 'Event not found',
+                  success: false
+                });
+              }
+              
+              res.status(200).json({ 
+                message: 'Event deleted successfully', 
+                success: true 
+              });
+            } catch (error) {
+              console.error('Error deleting event:', error);
+              res.status(500).json({ 
+                message: 'Internal server error', 
+                error: error.message,
+                success: false 
+              });
+            }
+          });
+
+          app.patch('/events/:id', async (req, res) => {
+            const { id } = req.params;
+            const updates = req.body;
+            
+            try {
+                // Validate ID format
+                if (!ObjectId.isValid(id)) {
+                    return res.status(400).json({ 
+                        message: 'Invalid event ID format',
+                        success: false 
+                    });
+                }
+        
+                // Validate that there are fields to update
+                if (!updates || Object.keys(updates).length === 0) {
+                    return res.status(400).json({ 
+                        message: 'No update fields provided',
+                        success: false 
+                    });
+                }
+        
+                // Create filter and update document
+                const filter = { _id: new ObjectId(id) };
+                const updateDoc = { $set: updates };
+                
+                // Add updatedAt timestamp
+                updateDoc.$set.updatedAt = new Date();
+        
+                const options = { returnDocument: 'after' };
+                
+                const result = await eventCollection.findOneAndUpdate(
+                    filter, 
+                    updateDoc, 
+                    options
+                );
+        
+                if (!result.value) {
+                    return res.status(404).json({ 
+                        message: 'Event not found',
+                        success: false 
+                    });
+                }
+        
+                res.status(200).json({ 
+                    message: 'Event updated successfully', 
+                    event: result.value,
+                    success: true 
+                });
+            } catch (error) {
+                console.error('Error updating event:', {
+                    error: error.message,
+                    stack: error.stack,
+                    params: req.params,
+                    body: req.body
+                });
+                
+                res.status(500).json({ 
+                    message: 'Internal server error', 
+                    error: error.message,
+                    success: false 
+                });
+            }
+        });
+
 
     } finally {
         // Ensures that the client will close when you finish/error
