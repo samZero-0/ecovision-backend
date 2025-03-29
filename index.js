@@ -211,45 +211,107 @@ async function run() {
 
        
 
-                
-        app.patch('/users/:id', async (req, res) => {
-            const { id } = req.params;
-            const { role } = req.body;
-
-            // Validate the role
-            if (!['user', 'seller', 'admin'].includes(role)) {
-                return res.status(400).json({ message: 'Invalid role' });
-            }
-
-            try {
-             
-                const filter = { _id: new ObjectId(id) };
-                const update = { $set: { role } };
-                const options = { returnDocument: 'after' }; 
-
-                const result = await userCollection.findOneAndUpdate(filter, update, options);
-
-                if (!result.value) {
-                    return res.status(404).json({ message: 'User not found' });
-                }
-
-                res.status(200).json({ message: 'Role updated successfully', user: result.value });
-            } catch (error) {
-                console.error('Error updating user role:', error);
-                res.status(500).json({ message: 'Internal server error', error: error.message });
-            }
-        });
+       app.patch('/users/:id', async (req, res) => {
+                  const { id } = req.params;
+                  const { displayName, email, photoURL, role } = req.body;
+              
+                  try {
+                      // Validate ID format
+                      if (!ObjectId.isValid(id)) {
+                          return res.status(400).json({ 
+                              message: 'Invalid user ID format',
+                              success: false 
+                          });
+                      }
+              
+                      const updateFields = {};
+                      if (displayName) updateFields.displayName = displayName;
+                      if (photoURL) updateFields.photoURL = photoURL;
+                      if (role) {
+                          // Validate the role if provided
+                          if (!['admin', 'donor', 'volunteer', 'user'].includes(role)) {
+                              return res.status(400).json({ 
+                                  message: 'Invalid role',
+                                  success: false 
+                              });
+                          }
+                          updateFields.role = role;
+                      }
+              
+                      // Only proceed if there are fields to update
+                      if (Object.keys(updateFields).length === 0) {
+                          return res.status(400).json({ 
+                              message: 'No valid fields provided for update',
+                              success: false 
+                          });
+                      }
+              
+                      const filter = { _id: new ObjectId(id) };
+                      const update = { $set: updateFields };
+                      const options = { returnDocument: 'after' };
+              
+                      const result = await userCollection.findOneAndUpdate(filter, update, options);
+              
+                      if (!result.value) {
+                          return res.status(404).json({ 
+                              message: 'User not found',
+                              success: false 
+                          });
+                      }
+              
+                      res.status(200).json({ 
+                          message: 'User updated successfully', 
+                          user: result.value,
+                          success: true 
+                      });
+                  } catch (error) {
+                      console.error('Error updating user:', error);
+                      res.status(500).json({ 
+                          message: 'Internal server error', 
+                          error: error.message,
+                          success: false 
+                      });
+                  }
+              });
 
         
-          app.delete('/categories/:id', async (req, res) => {
-            const { id } = req.params;
-            try {
-              const result = await categoryCollection.deleteOne({ _id: new ObjectId(id) });
-              res.status(200).send({ message: 'Category deleted successfully', result });
-            } catch (error) {
-              res.status(500).send({ message: 'Failed to delete category', error: error.message });
-            }
-          });
+          
+
+         
+            app.delete('/users/:id', async (req, res) => {
+              const { id } = req.params;
+              
+              try {
+                // Check if ID is valid
+                if (!ObjectId.isValid(id)) {
+                  return res.status(400).json({ 
+                    message: 'Invalid user ID format', 
+                    success: false 
+                  });
+                }
+
+                const result = await userCollection.deleteOne({ _id: new ObjectId(id) });
+                
+                if (result.deletedCount === 0) {
+                  return res.status(404).json({ 
+                    message: 'User not found',
+                    success: false
+                  });
+                }
+                
+                res.status(200).json({ 
+                  message: 'User deleted successfully', 
+                  success: true 
+                });
+              } catch (error) {
+                console.error('Error deleting user:', error);
+                res.status(500).json({ 
+                  message: 'Internal server error', 
+                  error: error.message,
+                  success: false 
+                });
+              }
+            });
 
          
 
