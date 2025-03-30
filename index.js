@@ -68,7 +68,7 @@ const client = new MongoClient(uri, {
         const database = client.db('Ecovision');
         const userCollection = database.collection('users');
         const eventCollection = database.collection('events');
-       
+        const volunteerCollection = database.collection('signedUpVolunteers');       
 
 async function run() {
     try {
@@ -317,7 +317,7 @@ async function run() {
             // Event Management APIs
             // Add this inside your 'run' function with your other routes
             app.post('/events', async (req, res) => {
-              const { title, date, time, location, attendees, status } = req.body;
+              const { title, date, time, location, attendees, status, description, image } = req.body;
               
               try {
                 // Validate required fields
@@ -336,7 +336,9 @@ async function run() {
                   location: location || '',
                   attendees: attendees || 0,
                   status: status || 'Upcoming',
-                  createdAt: new Date()
+                  createdAt: new Date(),
+                  description: description || '',
+                  image: image || ''
                 };
                 
                 // Insert the event into the database
@@ -373,7 +375,7 @@ async function run() {
             });
 
 
-            app.get('/events', async (req, res) => {
+           app.get('/events', async (req, res) => {
 
               const result = await eventCollection.find().toArray();
               res.send(result);
@@ -478,6 +480,103 @@ async function run() {
             }
         });
 
+        app.post('/signed-up-volunteers', async (req, res) => {
+          const volunteerData = req.body;
+          
+          try {
+              // Validate required fields
+              const requiredFields = [
+                  'volunteerName',
+                  'volunteerEmail',
+                  'eventId',
+                  'eventName',
+                  'eventImage',
+                  'volunteerImage'
+              ];
+              
+              const missingFields = requiredFields.filter(field => !volunteerData[field]);
+              
+              if (missingFields.length > 0) {
+                  return res.status(400).json({
+                      message: `Missing required fields: ${missingFields.join(', ')}`,
+                      success: false
+                  });
+              }
+              
+              // Validate email format
+              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+              if (!emailRegex.test(volunteerData.volunteerEmail)) {
+                  return res.status(400).json({
+                      message: 'Invalid email format',
+                      success: false
+                  });
+              }
+              
+              // Create volunteer document with defaults
+              const newVolunteer = {
+                  volunteerName: volunteerData.volunteerName,
+                  volunteerEmail: volunteerData.volunteerEmail,
+                  eventId: volunteerData.eventId,
+                  eventName: volunteerData.eventName,
+                  eventImage: volunteerData.eventImage,
+                  volunteerImage: volunteerData.volunteerImage,
+                  date: new Date(),
+                  progress: volunteerData.progress || 0,
+                  hoursCompleted: volunteerData.hoursCompleted || 0,
+                  status: volunteerData.status || 'registered', // default status
+                  createdAt: new Date()
+              };
+              
+              // Insert into database
+              const result = await volunteerCollection.insertOne(newVolunteer);
+              
+              if (result.insertedId) {
+                  return res.status(201).json({
+                      message: 'Volunteer registration successful',
+                      volunteer: {
+                          ...newVolunteer,
+                          _id: result.insertedId
+                      },
+                      success: true
+                  });
+              } else {
+                  return res.status(500).json({
+                      message: 'Failed to register volunteer',
+                      success: false
+                  });
+              }
+          } catch (error) {
+              console.error('Error registering volunteer:', {
+                  message: error.message,
+                  stack: error.stack,
+                  body: req.body
+              });
+              
+              res.status(500).json({
+                  message: 'Internal server error',
+                  error: error.message,
+                  success: false
+              });
+          }
+      });
+
+
+      app.get('/signed-up-volunteers', async (req, res) => {
+        try {
+            const result = await volunteerCollection.find().toArray();
+            res.status(200).json({
+                volunteers: result,
+                success: true
+            });
+        } catch (error) {
+            console.error('Error fetching volunteers:', error);
+            res.status(500).json({
+                message: 'Internal server error',
+                error: error.message,
+                success: false
+            });
+        }
+    });
 
     } finally {
         // Ensures that the client will close when you finish/error
