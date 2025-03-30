@@ -8,7 +8,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 dotenv.config();    
 const port = process.env.PORT || 5000;
 // const jwt = require('jsonwebtoken');
-// const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 
 
@@ -69,7 +69,8 @@ const client = new MongoClient(uri, {
         const database = client.db('Ecovision');
         const userCollection = database.collection('users');
         const eventCollection = database.collection('events');
-        const volunteerCollection = database.collection('signedUpVolunteers');       
+        const volunteerCollection = database.collection('signedUpVolunteers');
+        const donationCollection = database.collection('donations');          
 
 async function run() {
     try {
@@ -110,37 +111,6 @@ async function run() {
         // Other APIs
 
         
-        
-        app.get('/banners', async (req,res)=>{
-            const result = await bannerCollection.find().toArray();
-            res.send(result);
-        })
-
-      
-
-       
-        
-        
-        app.post('/create-payment-intent', async (req, res) => {    
-            const { price } = req.body;
-            const amount = Math.round(price * 100); 
-        
-            try {
-                const paymentIntent = await stripe.paymentIntents.create({
-                    amount: amount,
-                    currency: 'usd',
-                    payment_method_types: ['card'],
-                });
-        
-                res.send({
-                    client_secret: paymentIntent.client_secret, 
-                });
-            } catch (error) {
-                console.error('Payment intent creation error:', error);
-                res.status(500).send({ error: 'Failed to create payment intent' });
-            }
-        });   
-
 
 
      
@@ -713,6 +683,157 @@ app.delete('/signed-up-volunteers/:id', async (req, res) => {
     });
   }
 });
+
+
+
+      // Stripe Payment API
+      app.post('/create-payment-intent', async (req, res) => {    
+        const { amount, organizationId, frequency } = req.body;
+        
+        if (!amount || amount <= 0) {
+            return res.status(400).send({ 
+                error: 'Invalid amount',
+                success: false 
+            });
+        }
+        
+        // Amount needs to be in cents for Stripe
+        const amountInCents = Math.round(amount * 100);
+        
+        try {
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amountInCents,
+                currency: 'usd',
+                payment_method_types: ['card'],
+                metadata: {
+                    organizationId,
+                    frequency
+                }
+            });
+    
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+                success: true
+            });
+        } catch (error) {
+            console.error('Payment intent creation error:', error);
+            res.status(500).send({ 
+                error: 'Failed to create payment intent',
+                message: error.message,
+                success: false 
+            });
+        }
+    });
+    
+    // API to handle successful payments
+    app.post('/donation-success', async (req, res) => {
+        const { 
+            paymentIntentId, 
+            amount, 
+            organizationId, 
+            frequency, 
+            donorEmail,
+            donorName 
+        } = req.body;
+        
+        try {
+            // Verify payment with Stripe
+            const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+            
+            if (paymentIntent.status !== 'succeeded') {
+                return res.status(400).send({
+                    error: 'Payment has not succeeded',
+                    success: false
+                });
+            }
+            
+            // Save donation to database
+            const donation = {
+                paymentIntentId,
+                amount: parseFloat(amount),
+                organizationId,
+                frequency,
+                donorEmail: donorEmail || 'anonymous',
+                donorName: donorName || 'Anonymous Donor',
+                createdAt: new Date(),
+                status: 'completed'
+            };
+            
+            const result = await donationCollection.insertOne(donation);
+            
+            res.status(201).send({
+                message: 'Donation recorded successfully',
+                donationId: result.insertedId,
+                success: true
+            });
+        } catch (error) {
+            console.error('Donation recording error:', error);
+            res.status(500).send({
+                error: 'Failed to record donation',
+                message: error.message,
+                success: false
+            });
+        }
+    });
+    
+    // API to get donations by organization ID or donor email
+    app.get('/donations', async (req, res) => {
+        const { organizationId, donorEmail } = req.query;
+        const query = {};
+        
+        if (organizationId) {
+            query.organizationId = organizationId;
+        }
+        
+        if (donorEmail) {
+            query.donorEmail = donorEmail;
+        }
+        
+        try {
+            const donations = await donationCollection.find(query).toArray();
+            res.send({
+                donations,
+                success: true
+            });
+        } catch (error) {
+            console.error('Error fetching donations:', error);
+            res.status(500).send({
+                error: 'Failed to fetch donations',
+                message: error.message,
+                success: false
+            });
+        }
+    });
+    
+    // For recurring donations, you would need a webhook to handle Stripe events
+    app.post('/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+        const signature = req.headers['stripe-signature'];
+        let event;
+        
+        try {
+            // You should set STRIPE_WEBHOOK_SECRET in your .env file
+            event = stripe.webhooks.constructEvent(
+                req.body,
+                signature,
+                process.env.STRIPE_WEBHOOK_SECRET
+            );
+        } catch (err) {
+            console.error(`Webhook Error: ${err.message}`);
+            return res.status(400).send(`Webhook Error: ${err.message}`);
+        }
+        
+        // Handle specific event types
+        if (event.type === 'payment_intent.succeeded') {
+            const paymentIntent = event.data.object;
+            // Handle successful payment
+            console.log('PaymentIntent succeeded:', paymentIntent.id);
+            
+            // Here you would record the payment in your database
+            // Similar to what we do in the /donation-success endpoint
+        }
+        
+        res.send({received: true});
+    });
 
     } finally {
         // Ensures that the client will close when you finish/error
