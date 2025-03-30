@@ -160,7 +160,7 @@ async function run() {
                 displayName: newUser.name || newUser.displayName || '',
                 email: newUser.email,
                 photoURL: newUser.photo || newUser.photoURL || '',
-                role: newUser.role || 'user',
+                role: newUser.role || 'donor',
                 createdAt: new Date()
               };
             
@@ -577,6 +577,141 @@ async function run() {
             });
         }
     });
+
+    // Add this with your other endpoints in the run() function
+app.get('/signed-up-volunteers', async (req, res) => {
+  try {
+      const { email } = req.query;
+      
+      if (!email) {
+          return res.status(400).json([
+              {
+                  error: 'Email query parameter is required',
+                  statusCode: 400
+              }
+          ]);
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+          return res.status(400).json([
+              {
+                  error: 'Invalid email format',
+                  statusCode: 400
+              }
+          ]);
+      }
+
+      // Find all volunteers with matching email
+      const volunteers = await volunteerCollection.find({ 
+          volunteerEmail: email 
+      }).toArray();
+
+      res.status(200).json(volunteers);
+  } catch (error) {
+      console.error('Error fetching volunteers by email:', error);
+      res.status(500).json([
+          {
+              error: 'Internal server error',
+              details: error.message,
+              statusCode: 500
+          }
+      ]);
+  }
+});
+
+    // PATCH endpoint to update volunteer hours and progress
+app.patch('/signed-up-volunteers/:id', async (req, res) => {
+  const { id } = req.params;
+  const { hoursCompleted } = req.body;
+
+  try {
+    // Validate ID format
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        message: 'Invalid volunteer ID format',
+        success: false
+      });
+    }
+
+    // Validate hoursCompleted is a number
+    if (typeof hoursCompleted !== 'number' || hoursCompleted < 0) {
+      return res.status(400).json({
+        message: 'hoursCompleted must be a positive number',
+        success: false
+      });
+    }
+
+    const filter = { _id: new ObjectId(id) };
+    const update = { 
+      $set: { 
+        hoursCompleted,
+        progress: 'Completed',
+        updatedAt: new Date()
+      } 
+    };
+    const options = { returnDocument: 'after' };
+
+    const result = await volunteerCollection.findOneAndUpdate(filter, update, options);
+
+    if (!result.value) {
+      return res.status(404).json({
+        message: 'Volunteer record not found',
+        success: false
+      });
+    }
+
+    res.status(200).json({
+      message: 'Volunteer record updated successfully',
+      volunteer: result.value,
+      success: true
+    });
+  } catch (error) {
+    console.error('Error updating volunteer:', error);
+    res.status(500).json({
+      message: 'Internal server error',
+      error: error.message,
+      success: false
+    });
+  }
+});
+
+// DELETE endpoint to cancel registration
+app.delete('/signed-up-volunteers/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Validate ID format
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        message: 'Invalid volunteer ID format',
+        success: false
+      });
+    }
+
+    const result = await volunteerCollection.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        message: 'Volunteer record not found',
+        success: false
+      });
+    }
+
+    res.status(200).json({
+      message: 'Volunteer registration cancelled successfully',
+      success: true
+    });
+  } catch (error) {
+    console.error('Error deleting volunteer:', error);
+    res.status(500).json({
+      message: 'Internal server error',
+      error: error.message,
+      success: false
+    });
+  }
+});
 
     } finally {
         // Ensures that the client will close when you finish/error
