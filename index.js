@@ -20,7 +20,8 @@ app.use(cors(
             'http://localhost:5173',
             'http://localhost:5174',
             'http://localhost:5175',
-            'https://assignemnt-12.web.app'
+            'https://assignemnt-12.web.app',
+            'https://ecovision-partners.vercel.app'
             
 
         ], 
