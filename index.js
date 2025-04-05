@@ -856,7 +856,7 @@ app.delete('/signed-up-volunteers/:id', async (req, res) => {
         // Prepare system prompt with your product context
         const systemPrompt = `
         You are an assistant for Ecovision, an environmental organization. 
-        ${context || `We focus on sustainability initiatives, volunteer programs, 
+        ${context || `We focus on sustainability initiatives, volunteer programs, We also have some pricing options for our services but appreciate donations: $10 for basic, $25 for premium, and $100 for ultimate.
         and environmental education.Our company founded in 2025. Our current programs include:
         - Tree planting initiatives
         - Beach cleanups
