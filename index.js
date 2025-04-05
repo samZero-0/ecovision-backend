@@ -9,8 +9,11 @@ dotenv.config();
 const port = process.env.PORT || 5000;
 // const jwt = require('jsonwebtoken');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const { Groq } = require("groq-sdk");
 
-
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
+});
 
 
 
@@ -71,6 +74,7 @@ const client = new MongoClient(uri, {
         const eventCollection = database.collection('events');
         const volunteerCollection = database.collection('signedUpVolunteers');
         const donationCollection = database.collection('donations');          
+        const chatHistoryCollection = database.collection('chatHistory');
 
 async function run() {
     try {
@@ -833,6 +837,115 @@ app.delete('/signed-up-volunteers/:id', async (req, res) => {
         }
         
         res.send({received: true});
+    });
+
+
+    // AI Chatbot API
+    app.post('/ai-chat', async (req, res) => {
+      try {
+        const { message, userId, context } = req.body;
+    
+        // Validate input
+        if (!message?.trim()) {
+          return res.status(400).json({ 
+            error: "Message is required",
+            success: false 
+          });
+        }
+    
+        // Prepare system prompt with your product context
+        const systemPrompt = `
+        You are an assistant for Ecovision, an environmental organization. 
+        ${context || `We focus on sustainability initiatives, volunteer programs, 
+        and environmental education.Our company founded in 2025. Our current programs include:
+        - Tree planting initiatives
+        - Beach cleanups
+        - Environmental workshops
+        - Community recycling programs
+        -3 dashboards
+        -admin panel, volunteer panel, donor panel,
+        -stripe payment gateway integration for donations
+        -admin can manage users, events, and donations,
+        -volunteers can sign up for events and track their progress`}
+        
+        Respond helpfully and professionally. If unsure, say "I can check with our team".
+        `;
+    
+        // Get chat completion from Groq
+        const chatCompletion = await groq.chat.completions.create({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: message }
+          ],
+          model: "llama3-8b-8192",
+          temperature: 0.7,
+          max_tokens: 1024,
+          stream: false
+        });
+    
+        const aiResponse = chatCompletion.choices[0]?.message?.content || 
+          "I couldn't generate a response. Please try again.";
+    
+        // Store conversation in MongoDB (optional)
+        if (userId) {
+          await chatHistoryCollection.insertOne({
+            userId: new ObjectId(userId),
+            userMessage: message,
+            aiResponse,
+            timestamp: new Date()
+          });
+        }
+    
+        res.json({
+          response: aiResponse,
+          success: true
+        });
+    
+      } catch (error) {
+        console.error('AI Chat Error:', {
+          message: error.message,
+          stack: error.stack,
+          body: req.body
+        });
+    
+        res.status(500).json({ 
+          error: "AI service unavailable",
+          details: error.message,
+          success: false,
+          alternative: "Please try again later"
+        });
+      }
+    });
+    
+    // Add endpoint to get chat history
+    app.get('/ai-chat/history', async (req, res) => {
+      try {
+        const { userId } = req.query;
+        
+        if (!userId) {
+          return res.status(400).json({ 
+            error: "User ID is required",
+            success: false 
+          });
+        }
+    
+        const history = await chatHistoryCollection.find({
+          userId: new ObjectId(userId)
+        }).sort({ timestamp: -1 }).limit(20).toArray();
+    
+        res.json({
+          history,
+          success: true
+        });
+    
+      } catch (error) {
+        console.error('Chat History Error:', error);
+        res.status(500).json({ 
+          error: "Failed to fetch chat history",
+          details: error.message,
+          success: false
+        });
+      }
     });
 
     } finally {
