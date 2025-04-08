@@ -853,33 +853,35 @@ app.delete('/signed-up-volunteers/:id', async (req, res) => {
           });
         }
     
-        // Prepare system prompt with your product context
+        // Concise system prompt with strict length instructions
         const systemPrompt = `
-        You are an assistant for Ecovision, an environmental organization. 
-        ${context || `We focus on sustainability initiatives, volunteer programs, We also have some pricing options for our services but appreciate donations: $10 for basic, $25 for premium, and $100 for ultimate.
-        and environmental education.Our company founded in 2025. Our current programs include:
-        - Tree planting initiatives
-        - Beach cleanups
-        - Environmental workshops
-        - Community recycling programs
-        -3 dashboards
-        -admin panel, volunteer panel, donor panel,
-        -stripe payment gateway integration for donations
-        -admin can manage users, events, and donations,
-        -volunteers can sign up for events and track their progress`}
+        You are a concise assistant for Ecovision (founded by Kazi Samin Nawal in 2025).
+        Respond in 1-2 short sentences maximum unless more detail is explicitly requested.
         
-        Respond helpfully and professionally. If unsure, say "I can check with our team".
+        Key Info (use only if relevant):
+        ${context || `
+        - Programs: Tree planting, beach cleanups, workshops, recycling
+        - Pricing: $10/$25/$100
+        - Features: 3 dashboards, Stripe payments
+        
+        `}
+    
+        Response Rules:
+        1. Be  brief and concise (under 150 words when possible)
+        2. Only mention pricing if asked
+        3. Skip unnecessary details
+        4. If unsure: "I'll check with our team"
         `;
     
-        // Get chat completion from Groq
+        // Get chat completion with tighter parameters
         const chatCompletion = await groq.chat.completions.create({
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: message }
           ],
           model: "llama3-8b-8192",
-          temperature: 0.7,
-          max_tokens: 1024,
+          temperature: 0.5,  // Lower for more focused responses
+          max_tokens: 150,   // Strict token limit
           stream: false
         });
     
